@@ -1,0 +1,15 @@
+﻿numpy
+pandas
+matplotlib
+opencv-python
+scikit-learn
+albumentations
+tqdm
+pyyaml
+jupyter
+
+# Deep learning (install sesuai device)
+# Untuk CPU:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+# Untuk CUDA (contoh CUDA 12.1):
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121

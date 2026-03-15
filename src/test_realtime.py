@@ -1,4 +1,7 @@
 import argparse
+import json
+import socket
+import time
 from collections import Counter, deque
 from pathlib import Path
 
@@ -150,6 +153,26 @@ def majority_label(history: deque[str], min_votes: int) -> str | None:
     return None
 
 
+def try_connect_tcp(host: str, port: int, timeout: float = 2.0) -> socket.socket | None:
+    if not host or port <= 0:
+        return None
+    try:
+        sock = socket.create_connection((host, port), timeout=timeout)
+        sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        return sock
+    except OSError:
+        return None
+
+
+def send_tcp_message(sock: socket.socket, payload: dict) -> bool:
+    try:
+        data = json.dumps(payload, ensure_ascii=True) + "\n"
+        sock.sendall(data.encode("utf-8"))
+        return True
+    except OSError:
+        return False
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Realtime test model dengan outline semua objek")
     parser.add_argument("--checkpoint", type=Path, default=Path("checkpoints/custom_cnn_all.pth"), help="Path model checkpoint")
@@ -163,6 +186,10 @@ def main() -> None:
     parser.add_argument("--min-votes", type=int, default=4, help="Minimal suara untuk update label stabil")
     parser.add_argument("--max-track-distance", type=float, default=90.0, help="Jarak maksimum asosiasi objek antar frame")
     parser.add_argument("--max-missing", type=int, default=12, help="Batas frame hilang sebelum track dihapus")
+    parser.add_argument("--tcp-host", type=str, default="", help="Host penerima TCP (kosong untuk disable)")
+    parser.add_argument("--tcp-port", type=int, default=0, help="Port penerima TCP")
+    parser.add_argument("--send-delay-seconds", type=float, default=3.0, help="Delay label stabil sebelum dikirim (detik)")
+    parser.add_argument("--send-retry-seconds", type=float, default=5.0, help="Interval coba konek ulang TCP (detik)")
     args = parser.parse_args()
 
     if not args.checkpoint.exists():
@@ -173,6 +200,7 @@ def main() -> None:
 
     idx_to_class_raw = ckpt["idx_to_class"]
     idx_to_class = {int(k): v for k, v in idx_to_class_raw.items()}
+    class_to_idx = {v: k for k, v in idx_to_class.items()}
     num_classes = len(idx_to_class)
 
     image_size = int(ckpt.get("image_size", 128))
@@ -192,6 +220,9 @@ def main() -> None:
     tracks: dict[int, dict] = {}
     next_track_id = 1
     frame_id = 0
+    send_index = 1
+    tcp_sock: socket.socket | None = None
+    last_tcp_attempt = 0.0
 
     print("Tekan q untuk keluar")
 
@@ -265,12 +296,16 @@ def main() -> None:
                 if best_track_id is None:
                     best_track_id = next_track_id
                     next_track_id += 1
+                    now_mono = time.monotonic()
                     tracks[best_track_id] = {
                         "center": det["center"],
                         "history": deque(maxlen=max(1, args.vote_window)),
                         "stable_label": det["label"],
                         "conf": det["conf"],
                         "last_seen": frame_id,
+                        "stable_since": now_mono,
+                        "last_sent_label": None,
+                        "last_sent_time": 0.0,
                     }
                 else:
                     unmatched_tracks.discard(best_track_id)
@@ -281,7 +316,9 @@ def main() -> None:
                 track["history"].append(det["label"])
                 stable = majority_label(track["history"], args.min_votes)
                 if stable is not None:
-                    track["stable_label"] = stable
+                    if stable != track["stable_label"]:
+                        track["stable_label"] = stable
+                        track["stable_since"] = time.monotonic()
                 track["conf"] = det["conf"]
 
                 det["track_id"] = best_track_id
@@ -291,6 +328,41 @@ def main() -> None:
             stale_ids = [tid for tid, t in tracks.items() if frame_id - t["last_seen"] > args.max_missing]
             for tid in stale_ids:
                 del tracks[tid]
+
+            if args.tcp_host and args.tcp_port > 0:
+                now_mono = time.monotonic()
+                if tcp_sock is None and (now_mono - last_tcp_attempt) >= args.send_retry_seconds:
+                    last_tcp_attempt = now_mono
+                    tcp_sock = try_connect_tcp(args.tcp_host, args.tcp_port)
+                    if tcp_sock is None:
+                        print("Gagal konek TCP. Akan coba lagi.")
+
+                if tcp_sock is not None:
+                    for track_id, track in tracks.items():
+                        stable_label = track["stable_label"]
+                        if stable_label == "unknown":
+                            continue
+                        if (now_mono - track["stable_since"]) < args.send_delay_seconds:
+                            continue
+                        if track["last_sent_label"] == stable_label:
+                            continue
+
+                        payload = {
+                            "index": send_index,
+                            "track_id": track_id,
+                            "label": stable_label,
+                            "class_index": class_to_idx.get(stable_label, None),
+                            "confidence": round(float(track["conf"]), 4),
+                            "timestamp_unix": time.time(),
+                        }
+                        if not send_tcp_message(tcp_sock, payload):
+                            tcp_sock.close()
+                            tcp_sock = None
+                            break
+
+                        track["last_sent_label"] = stable_label
+                        track["last_sent_time"] = now_mono
+                        send_index += 1
 
             for det in detections:
                 x, y, w, h = det["x"], det["y"], det["w"], det["h"]

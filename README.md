@@ -37,5 +37,5 @@ python src/train.py
 
 ## 5) Jalankan realtime testing
 ```powersheel
-python src/test_realtime.py --checkpoint checkpoints/custom_cnn_blue.pth --camera-index 0 --min-area 2200 --conf-threshold 0.65 --vote-window 10 --min-votes 6 --small-max-area 7500 --medium-max-area 55000
+python src/test_realtime.py --checkpoint checkpoints/custom_cnn_blue.pth --camera-index 0 --min-area 2200 --conf-threshold 0.65 --vote-window 10 --min-votes 6 --small-max-area 7500 --medium-max-area 55000 --triangle-small-max-area 5000 --triangle-medium-max-area 35000
 ```

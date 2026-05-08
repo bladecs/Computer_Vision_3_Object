@@ -103,6 +103,20 @@ def estimate_size(area: float, small_max: float, medium_max: float) -> str:
     return "besar"
 
 
+def estimate_size_for_shape(
+    shape: str,
+    area: float,
+    small_max: float,
+    medium_max: float,
+    triangle_small_max: float | None,
+    triangle_medium_max: float | None,
+) -> str:
+    if shape == "segitiga":
+        small_max = triangle_small_max if triangle_small_max is not None else small_max
+        medium_max = triangle_medium_max if triangle_medium_max is not None else medium_max
+    return estimate_size(area, small_max, medium_max)
+
+
 def split_model_label(label: str) -> tuple[str, str, str]:
     parts = label.split("_")
     if len(parts) != 3:
@@ -182,6 +196,8 @@ def main() -> None:
     parser.add_argument("--conf-threshold", type=float, default=0.60, help="Threshold confidence model")
     parser.add_argument("--small-max-area", type=float, default=7000, help="Batas maksimum area untuk ukuran kecil")
     parser.add_argument("--medium-max-area", type=float, default=14000, help="Batas maksimum area untuk ukuran sedang")
+    parser.add_argument("--triangle-small-max-area", type=float, default=None, help="Batas maksimum area segitiga untuk ukuran kecil")
+    parser.add_argument("--triangle-medium-max-area", type=float, default=None, help="Batas maksimum area segitiga untuk ukuran sedang")
     parser.add_argument("--vote-window", type=int, default=8, help="Jumlah frame untuk voting label")
     parser.add_argument("--min-votes", type=int, default=4, help="Minimal suara untuk update label stabil")
     parser.add_argument("--max-track-distance", type=float, default=90.0, help="Jarak maksimum asosiasi objek antar frame")
@@ -255,7 +271,6 @@ def main() -> None:
 
                 model_shape, model_color, model_size = split_model_label(model_label)
                 geo_shape = estimate_shape(contour)
-                geo_size = estimate_size(area, args.small_max_area, args.medium_max_area)
                 geo_color = estimate_color(frame, contour)
 
                 if conf_value >= args.conf_threshold and model_shape != "unknown":
@@ -263,6 +278,14 @@ def main() -> None:
                 else:
                     shape = geo_shape if geo_shape != "unknown" else model_shape
 
+                geo_size = estimate_size_for_shape(
+                    shape,
+                    area,
+                    args.small_max_area,
+                    args.medium_max_area,
+                    args.triangle_small_max_area,
+                    args.triangle_medium_max_area,
+                )
                 color = geo_color if geo_color != "unknown" else model_color
                 size = geo_size if geo_size != "unknown" else model_size
                 current_label = f"{shape}_{color}_{size}"

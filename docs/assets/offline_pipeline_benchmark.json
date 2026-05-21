@@ -1,0 +1,30 @@
+{
+  "note": "Offline benchmark on saved test images, CPU, not live conveyor/camera FPS.",
+  "num_images": 355,
+  "contour_found_images": 355,
+  "segmentation_hsv_ms": {
+    "avg": 10.741030705869722,
+    "min": 7.529099995736033,
+    "max": 34.897000005003065,
+    "median": 10.278199973981827
+  },
+  "preprocess_crop_resize_ms": {
+    "avg": 1.849861689646479,
+    "min": 0.7955000037327409,
+    "max": 7.497699989471585,
+    "median": 1.6297000111080706
+  },
+  "cnn_inference_ms": {
+    "avg": 7.799110139562735,
+    "min": 3.7743999855592847,
+    "max": 49.696699948981404,
+    "median": 6.318499974440783
+  },
+  "total_pipeline_ms": {
+    "avg": 20.39000253507894,
+    "min": 14.032100036274642,
+    "max": 69.9962999788113,
+    "median": 18.36719998391345
+  },
+  "offline_equivalent_fps_from_avg_total": 49.04364274990163
+}
